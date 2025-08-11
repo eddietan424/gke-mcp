@@ -31,6 +31,48 @@ When users ask a question about the Monitoring or monitored resource types, the 
 - After getting all the monitored resource, if the user ask for GKE specific ones, please filter the output and only include the GKE related ones
   \*\* Full GKE related monitored resources are the one contains `gke` or `k8s` or `container.googleapis.com`
 
+## GKE Troubleshooting/Debugging
+
+For GKE Troubleshooting/Debugging, the overall playbook guide could be found in [playbook](https://cloud.google.com/kubernetes-engine/docs/troubleshooting)
+
+The overall troubleshooting could be broken down into 5 steps:
+
+1. Initial Triage & Scoping
+  Start by asking the user clarifying questions to understand the "blast radius" and context of the issue. Your questions should aim to establish:
+  What: The exact observed behavior vs. the expected behavior.
+  Where: The specific cluster, namespace, deployment, pod, or service affected. E.g: if user ask about debugging/troubleshooting for a workload, please always ask to specify the location, cluster name etc.
+  When: The timestamp when the issue began.
+  Impact: The scope of the impact (e.g., a single pod, all replicas, all users, a specific geographic region).
+  Recent Changes: Any recent deployments, configuration changes, or other events that correlate with the start time of the issue.
+
+2. Symptom Analysis & Data Gathering
+  Based on my answers, detail the specific data points we need to collect. For each data point, specify:
+  What to Look For: The key indicators and error signatures we're searching for (e.g., CrashLoopBackOff, ImagePullBackOff, OOMKilled, HTTP 5xx error codes, high CPU/memory saturation, latency spikes, PVC FailedMount events, network policy denials).
+  How to Get It (MCP Server): Provide the conceptual query or action for the GKE MCP Server to fetch this data. Frame these as clear instructions.
+  Example 1: "Query the MCP Server for error-level logs from the [service-name] pods in the [namespace] from the last hour." This could be done by using the query logs tool
+  Example 2: "Use the MCP Server to graph the CPU and memory utilization metrics for the node(s) where the pod [pod-name] is scheduled, looking for saturation.". This could be done by using the get monitored resource tool to fetch the monitored resource descriptor and run the query to fetch the data.
+  Example 3: "Request the Kubernetes event stream from the MCP Server for the [deployment-name] resource, filtering for Warning level events."
+
+3. Hypothesis Generation
+  Based on the likely findings from the data, formulate 2-3 of the most probable root cause hypotheses. Frame them as clear, testable statements.
+  Hypothesis A: The application is in a crash loop due to an Out-of-Memory (OOM) error because its memory limit is set too low.
+  Hypothesis B: The pods cannot start because the node's service account lacks the necessary IAM permissions to pull the container image from GCR/Artifact Registry.
+  Hypothesis C: The application cannot connect to its database due to a misconfigured Kubernetes secret or a restrictive network policy.
+
+4. Verification & Deeper Investigation
+  For each hypothesis, outline the precise commands using standard tools like kubectl and gcloud that would be used to validate or invalidate it. This step connects the data from the MCP Server to the live configuration state of the cluster.
+  To Validate Hypothesis A: "Run kubectl describe pod <pod-name> -n <namespace> and inspect the State and Last State fields for Reason: OOMKilled. Also, check the resource Limits under the container specification."
+  To Validate Hypothesis B: "Run gcloud projects get-iam-policy <project-id> and kubectl describe serviceaccount <sa-name> to verify permissions. Also, run kubectl describe pod <pod-name> -n <namespace> and look for ImagePullBackOff events with permission-denied errors."
+  To Validate Hypothesis C: "Run kubectl exec -it <pod-name> -n <namespace> -- /bin/sh to get a shell inside the running container (if possible) and test connectivity to the database host and port using nc -zv <db-host> <db-port>."
+
+  Note: when using kubectl, please always check that the context is set correctly for the corresponding cluster. Full instructions could be found in [kubectl](https://kubernetes.io/docs/reference/kubectl/)
+
+5. Mitigation & Remediation Path
+  Finally, for the most likely hypothesis, suggest a clear path forward.
+  Immediate Mitigation: Recommend a short-term action to restore service immediately (e.g., rolling back a deployment, manually scaling up a resource, temporarily increasing memory limits).
+  Long-Term Remediation: Propose a permanent fix to prevent the issue from recurring (e.g., correcting the resource limits in the Helm chart/YAML manifest, creating a proper service account with correct IAM bindings, updating the application code to handle connection failures gracefully).
+
+
 ## GKE Cost
 
 GKE costs are available from **[GCP Billing Detailed BigQuery Export](https://cloud.google.com/billing/docs/how-to/export-data-bigquery#setup):**. The user will have to provide the full path to their BigQuery table, which inludes their BigQuery dataset name and the table name which contains their Billing Account ID.
